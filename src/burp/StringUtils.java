@@ -3,10 +3,10 @@ package burp;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
@@ -26,7 +26,7 @@ public class StringUtils {
 	}
 
 	// TSVを出力
-	public static String convertTsv(List<List<String>> tsvList) {
+	private static String convertTsv(List<List<String>> tsvList) {
 		StringBuilder sb = new StringBuilder();
 		if (tsvList != null) {
 			for (List<String> cols : tsvList) {
@@ -47,7 +47,7 @@ public class StringUtils {
 	}
 
 	// URLの編集
-	public static List<List<String>> editUrl(IHttpRequestResponse messages) {
+	private static List<List<String>> editUrl(IHttpRequestResponse messages) {
 		List<List<String>> result = new ArrayList<>();
 		IRequestInfo requestInfo = BurpExtender.callbacks.getHelpers().analyzeRequest(messages);
 		String url = String.format("%s://%s%s", requestInfo.getUrl().getProtocol(),
@@ -77,7 +77,7 @@ public class StringUtils {
 	}
 
 	// Bodyの編集(JSON以外)
-	public static List<List<String>> editParams(IHttpRequestResponse message) {
+	private static List<List<String>> editParams(IHttpRequestResponse message) {
 		List<List<String>> result = new ArrayList<>();
 		IRequestInfo requestInfo = BurpExtender.callbacks.getHelpers().analyzeRequest(message);
 		List<IParameter> parameters = requestInfo.getParameters();
@@ -116,7 +116,7 @@ public class StringUtils {
 	}
 
 	// JSONの編集
-	public static List<List<String>> editJson(IHttpRequestResponse message) {
+	private static List<List<String>> editJson(IHttpRequestResponse message) {
 		List<List<String>> result = new ArrayList<>();
 		IRequestInfo requestInfo = BurpExtender.callbacks.getHelpers().analyzeRequest(message);
 		if (requestInfo.getContentType() != IRequestInfo.CONTENT_TYPE_JSON) {
