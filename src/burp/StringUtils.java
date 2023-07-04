@@ -145,19 +145,24 @@ public class StringUtils {
 		JsonElement je = JsonParser.parseString(json);
 		if (je.isJsonObject()) {
 			Iterator<Map.Entry<String, JsonElement>> it =
-					je.getAsJsonObject().entrySet().iterator();
-			while (it.hasNext()) {
-				Map.Entry<String, JsonElement> entry = it.next();
-				String key = String.format("%s[%s]", parentKey, entry.getKey());
-				if (entry.getValue().isJsonNull()) {
-					result.add(editData("", "", type, key, ""));
-				} else if (entry.getValue().isJsonObject()) {
-					result.addAll(parseJson(entry.getValue().toString(), key, type));
-				} else if (entry.getValue().isJsonArray()) {
-					result.addAll(parseJson(entry.getValue().toString(), key, type));
-				} else {
-					result.add(editData("", "", type, key, entry.getValue().getAsString()));
+					je.getAsJsonObject().entrySet().iterator();	
+			if (it.hasNext()) {
+				while (it.hasNext()) {
+					Map.Entry<String, JsonElement> entry = it.next();
+					String key = String.format("%s[%s]", parentKey, entry.getKey());
+					if (entry.getValue().isJsonNull()) {
+						result.add(editData("", "", type, key, ""));
+					} else if (entry.getValue().isJsonObject()) {
+						result.addAll(parseJson(entry.getValue().toString(), key, type));
+					} else if (entry.getValue().isJsonArray()) {
+						result.addAll(parseJson(entry.getValue().toString(), key, type));
+					} else {
+						result.add(editData("", "", type, key, entry.getValue().getAsString()));
+					}
 				}
+			} else {
+				// 子要素なし
+				result.add(editData("", "", type, parentKey, ""));
 			}
 		} else if (je.isJsonArray()) {
 			int i = 0;
