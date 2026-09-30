@@ -127,14 +127,10 @@ public class StringUtils {
 				message.getRequest().length);
 		String body = new String(bytes, StandardCharsets.UTF_8);
 		String[] rows = body.split("\n");
-		if (rows.length <= 1) {
-			result.addAll(parseJson(rows[0], "", "JSON"));
-		} else {
-			// 複数行JSON対応
-			int i = 0;
-			for (String row : rows) {
-				result.addAll(parseJson(row, "", String.format("JSON%d", ++i)));
-			}
+		// 複数行JSON対応
+		int i = 0;
+		for (String row : rows) {
+			result.addAll(parseJson(row, "", String.format("JSON%d", ++i)));
 		}
 		return result;
 	}
