@@ -64,27 +64,50 @@ public class StringUtils {
 			sb.append(":" + port);
 		}
 		sb.append(requestUrl.getPath());
-		return List.of(createUrlRow(requestInfo.getMethod(), sb.toString()));
+		return List.of(createUrlRow(requestInfo.getMethod(), sb.toString(), getQuery(message), getBody(message)));
+	}
+
+	// リクエスト情報からQueryを取得
+	private static String getQuery(IHttpRequestResponse message) {
+		String query = BurpExtender.helpers.analyzeRequest(message).getUrl().getQuery();
+		if (query == null) {
+			return "";
+		}
+		return decode(query);
+	}
+
+	// リクエスト情報からBodyを取得
+	private static String getBody(IHttpRequestResponse message) {
+		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
+		byte[] bytes = Arrays.copyOfRange(
+				message.getRequest(), requestInfo.getBodyOffset(), message.getRequest().length);
+		return new String(bytes, StandardCharsets.UTF_8);
 	}
 
 	// TSV1行分の共通データを生成
-	private static List<String> createRow(String method, String url, String type, String key, String value) {
+	private static List<String> createRow(String method, String url, String type, String key, String value,
+			String query, String body) {
 		return List.of(
 				url,
 				type,
 				key,
 				editValue(value),
-				method);
+				method,
+				"", "", "", "", "", "", "", "", "", "", "", "",
+				query,
+				body);
 	}
 
 	// URL情報用のTSV行を生成
-	private static List<String> createUrlRow(String method, String url) {
+	private static List<String> createUrlRow(String method, String url, String query, String body) {
 		return createRow(
 				method,
 				url,
 				"",
 				"",
-				"");
+				"",
+				query,
+				body);
 	}
 
 	// パラメータ用のTSV行を生成
@@ -94,7 +117,9 @@ public class StringUtils {
 				"",
 				type,
 				key,
-				value);
+				value,
+				"",
+				"");
 	}
 
 	// TSV出力用に値を整形
@@ -157,14 +182,6 @@ public class StringUtils {
 			}
 		}
 		return false;
-	}
-
-	// リクエスト情報からBodyを取得
-	private static String getBody(IHttpRequestResponse message) {
-		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
-		byte[] bytes = Arrays.copyOfRange(
-				message.getRequest(), requestInfo.getBodyOffset(), message.getRequest().length);
-		return new String(bytes, StandardCharsets.UTF_8);
 	}
 
 	// JSON Bodyを解析して一覧化

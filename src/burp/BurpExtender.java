@@ -12,7 +12,7 @@ import java.util.List;
 import javax.swing.JMenuItem;
 
 public class BurpExtender implements IBurpExtender, IContextMenuFactory {
-	private static final String NAME = "BurpSiteTree";
+	private static final String NAME = "BurpSiteTree Type-D";
 	static PrintWriter stdout;
 	static PrintWriter stderr;
 	static IExtensionHelpers helpers;
