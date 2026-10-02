@@ -9,23 +9,22 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
 public class StringUtils {
+	// Excelの列に設定する式
+	private static final String FORMULA = "=IF(ISERROR(SEARCH(\"重複\",INDIRECT(\"M\"&ROW()))), INDIRECT(\"Q\"&ROW()), "
+			+ "INDIRECT(\"Q\"&ROW())&\"、No.\"&INDIRECT(\"P\"&ROW())&\" と同等の動きと思われる。\")";
+
 	// リクエストの編集
 	public static String edit(List<HttpRequestResponse> messages) {
 		StringBuilder sb = new StringBuilder();
 		// 複数選択時に画面上の表示順となるよう逆順で処理
 		for (int i = messages.size() - 1; i >= 0; i--) {
 			HttpRequestResponse message = messages.get(i);
-			sb.append(convertTsv(createUrlRows(message)));
-			sb.append(convertTsv(createParameterRows(message)));
-			sb.append(convertTsv(createJsonRows(message)));
+			sb.append(convertTsv(createRows(message)));
 		}
 		return sb.toString();
 	}
@@ -49,8 +48,20 @@ public class StringUtils {
 		return value.replaceAll("[\\x00-\\x1F\\x7F]", "").replace("\"", "\"\"");
 	}
 
-	// リクエスト情報からURL行を生成
-	private static List<List<String>> createUrlRows(HttpRequestResponse message) {
+	// リクエスト情報から出力行を生成
+	private static List<List<String>> createRows(HttpRequestResponse message) {
+		return List.of(createRow(getUrl(message), isTarget(message), getRemark(message),
+				message.request().bodyToString()));
+	}
+
+	// TSV1行分の共通データを生成
+	private static List<String> createRow(String url, boolean isTarget, String remark,
+			String body) {
+		return List.of(url, isTarget ? "対象" : "対象外", "", "", "", remark, FORMULA, "", body);
+	}
+
+	// リクエスト情報からURLを生成
+	private static String getUrl(HttpRequestResponse message) {
 		var request = message.request();
 		StringBuilder sb = new StringBuilder();
 		try {
@@ -61,148 +72,134 @@ public class StringUtils {
 				sb.append(":").append(port);
 			}
 			sb.append(url.getPath());
-			return List.of(createUrlRow(sb.toString(), request.method()));
+			String query = request.query();
+			if (!query.isEmpty()) {
+				sb.append("?").append(query);
+			}
+			return sb.toString();
 		} catch (MalformedURLException e) {
-			return Collections.emptyList();
+			return sb.toString();
 		}
 	}
 
-	// TSV1行分の共通データを生成
-	private static List<String> createRow(String url, String type, String key, String value,
-			String method) {
-		return List.of(url, type, key, editValue(value), method);
-	}
-
-	// URL情報用のTSV行を生成
-	private static List<String> createUrlRow(String url, String method) {
-		return createRow(url, "", "", "", method);
-	}
-
-	// パラメータ用のTSV行を生成
-	private static List<String> createDataRow(String type, String key, String value) {
-		return createRow("", type, key, value, "");
-	}
-
-	// TSV出力用に値を整形
-	private static String editValue(String value) {
-		if (value == null) {
-			return "";
+	// 診断対象かどうかを判定
+	private static boolean isTarget(HttpRequestResponse message) {
+		String method = message.request().method();
+		if (!List.of("GET", "POST", "PUT", "DELETE", "PATCH").contains(method)) {
+			return false;
 		}
-		int byteLength = value.getBytes(StandardCharsets.UTF_8).length;
-		if (isBinary(value)) {
-			return String.format("(%d bytes)", byteLength);
+		short statusCode = getStatusCode(message);
+		if (statusCode < 200 || statusCode >= 400) {
+			return false;
 		}
-		if (byteLength > 4096) {
-			return String.format("(%d bytes)", byteLength);
+		int paramCount = getParamCount(message);
+		if (paramCount == 0) {
+			return false;
 		}
-		return value;
+		return true;
 	}
 
-	// URL・Cookie・Bodyパラメータを抽出
-	private static List<List<String>> createParameterRows(HttpRequestResponse message) {
-		List<List<String>> parameterRows = new ArrayList<>();
+	// リクエスト情報から備考を生成
+	private static String getRemark(HttpRequestResponse message) {
+		StringBuilder sb = new StringBuilder();
+		// メソッド
+		sb.append(message.request().method());
+		// パラメータ数
+		int paramCount = getParamCount(message);
+		if (paramCount == 0) {
+			sb.append("、パラメータ無し");
+		} else {
+			sb.append("、Params=").append(paramCount);
+		}
+		// リダイレクトかどうか
+		short statusCode = getStatusCode(message);
+		if (statusCode >= 300 && statusCode < 400) {
+			sb.append("、リダイレクト");
+		}
+		// ステータスコード
+		sb.append("、status:").append(statusCode);
+		return sb.toString();
+	}
+
+	// レスポンス情報からStatusCodeを取得
+	private static short getStatusCode(HttpRequestResponse message) {
+		if (!message.hasResponse()) {
+			return 0;
+		}
+		return message.response().statusCode();
+	}
+
+	// リクエスト情報からパラメータ数を取得
+	private static int getParamCount(HttpRequestResponse message) {
+		// URLとBodyとJSONのパラメータ数をカウント
+		return getParamCountBody(message) + getParamCountJson(message);
+	}
+
+	// URLとBodyのパラメータ数をカウント
+	private static int getParamCountBody(HttpRequestResponse message) {
 		var parameters = message.request().parameters();
+		int paramCount = 0;
 		for (var parameter : parameters) {
-			String type;
 			switch (parameter.type()) {
 			case URL:
-				type = "URL";
-				break;
-			case COOKIE:
-				type = "Cookie";
-				break;
 			case BODY:
 			case MULTIPART_ATTRIBUTE:
 			case XML:
 			case XML_ATTRIBUTE:
-				type = "Body";
+				paramCount++;
 				break;
-			case JSON:
 			default:
 				continue;
 			}
-			parameterRows.add(createDataRow(type, parameter.name(), parameter.value()));
 		}
-		return parameterRows;
+		return paramCount;
 	}
 
-	// バイナリデータか判定
-	private static boolean isBinary(String value) {
-		for (char c : value.toCharArray()) {
-			if (c < 0x20 && c != '\r' && c != '\n' && c != '\t') {
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// JSON Bodyを解析して一覧化
-	private static List<List<String>> createJsonRows(HttpRequestResponse message) {
-		List<List<String>> jsonRows = new ArrayList<>();
+	// JSON Bodyを解析してパラメータ数をカウント
+	private static int getParamCountJson(HttpRequestResponse message) {
 		var request = message.request();
 		if (request.contentType() != ContentType.JSON) {
-			return Collections.emptyList();
+			return 0;
 		}
-		var body = request.bodyToString();
+		String body = request.bodyToString();
 		try {
-			jsonRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
+			return countJson(JsonParser.parseString(body));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
-			int i = 0;
+			int count = 0;
 			for (String line : body.split("\\R")) {
-				if (line.isBlank()) {
-					continue;
+				if (!line.isBlank()) {
+					count += countJson(JsonParser.parseString(line));
 				}
-				jsonRows.addAll(parseJson(JsonParser.parseString(line), "JSON" + (++i), ""));
 			}
+			return count;
 		}
-		return jsonRows;
 	}
 
-	// JSONを再帰的に走査してキーと値の一覧へ展開
-	private static List<List<String>> parseJson(JsonElement element, String type,
-			String parentKey) {
-		List<List<String>> entries = new ArrayList<>();
+	// JSONを再帰的に走査してパラメータ数をカウント
+	private static int countJson(JsonElement element) {
 		if (element.isJsonObject()) {
 			JsonObject obj = element.getAsJsonObject();
 			if (obj.isEmpty()) {
-				String key = parentKey.isEmpty() ? "$" : parentKey;
-				return List.of(createDataRow(type, key, "{}"));
+				return 1;
 			}
+			int count = 0;
 			for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
-				String key = parentKey + "[" + entry.getKey() + "]";
-				addJsonValue(entries, type, key, entry.getValue());
+				count += countJson(entry.getValue());
 			}
-		} else if (element.isJsonArray()) {
+			return count;
+		}
+		if (element.isJsonArray()) {
 			JsonArray array = element.getAsJsonArray();
 			if (array.isEmpty()) {
-				String key = parentKey.isEmpty() ? "$" : parentKey;
-				return List.of(createDataRow(type, key, "[]"));
+				return 1;
 			}
-			int index = 0;
+			int count = 0;
 			for (JsonElement value : array) {
-				String key = parentKey + "[" + index++ + "]";
-				addJsonValue(entries, type, key, value);
+				count += countJson(value);
 			}
-		} else if (element.isJsonNull()) {
-			String key = parentKey.isEmpty() ? "$" : parentKey;
-			entries.add(createDataRow(type, key, "null"));
-		} else {
-			String key = parentKey.isEmpty() ? "$" : parentKey;
-			entries.add(createDataRow(type, key, element.getAsString()));
+			return count;
 		}
-		return entries;
-	}
-
-	// オブジェクト・配列は再帰展開し、それ以外は値として追加
-	private static void addJsonValue(List<List<String>> entries, String type, String key,
-			JsonElement value) {
-		if (value.isJsonObject() || value.isJsonArray()) {
-			entries.addAll(parseJson(value, type, key));
-		} else if (value.isJsonNull()) {
-			entries.add(createDataRow(type, key, "null"));
-		} else {
-			entries.add(createDataRow(type, key, value.getAsString()));
-		}
+		return 1;
 	}
 }
