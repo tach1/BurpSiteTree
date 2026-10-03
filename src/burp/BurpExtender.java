@@ -7,43 +7,40 @@ import java.awt.datatransfer.StringSelection;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
-import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.swing.JMenuItem;
 
 public class BurpExtender implements IBurpExtender, IContextMenuFactory {
-	static final String name = "BurpSiteTree";
+	private static final String NAME = "BurpSiteTree";
 	static PrintWriter stdout;
 	static PrintWriter stderr;
-	static IBurpExtenderCallbacks callbacks;
+	static IExtensionHelpers helpers;
 
 	// implement IBurpExtender
 	@Override
 	public void registerExtenderCallbacks(IBurpExtenderCallbacks callbacks) {
-		BurpExtender.callbacks = callbacks;
-		callbacks.setExtensionName(BurpExtender.name);
+		BurpExtender.helpers = callbacks.getHelpers();
+		callbacks.setExtensionName(NAME);
 		callbacks.registerContextMenuFactory(this);
 		stdout = new PrintWriter(callbacks.getStdout(), true);
 		stderr = new PrintWriter(callbacks.getStderr(), true);
-		stdout.println(BurpExtender.name + " Load OK");
+		stdout.println(NAME + " Load OK");
 	}
 
 	// implement IContextMenuFactory
 	@Override
 	public List<JMenuItem> createMenuItems(IContextMenuInvocation invocation) {
-		List<JMenuItem> menuList = new ArrayList<>();
-		JMenuItem menuItem1 = new JMenuItem("Copy to clipboard");
-		JMenuItem menuItem2 = new JMenuItem("Open in Editor");
-		menuItem1.addActionListener(e -> copyAction(invocation.getSelectedMessages()));
-		menuItem2.addActionListener(e -> openAction(invocation.getSelectedMessages()));
-		menuList.add(menuItem1);
-		menuList.add(menuItem2);
-		return menuList;
+		JMenuItem copyMenu = new JMenuItem("Copy to clipboard");
+		JMenuItem openMenu = new JMenuItem("Open in Editor");
+		copyMenu.addActionListener(e -> copyAction(invocation.getSelectedMessages()));
+		openMenu.addActionListener(e -> openAction(invocation.getSelectedMessages()));
+		return List.of(copyMenu, openMenu);
 	}
 
 	// copy to clipboard
 	private void copyAction(IHttpRequestResponse[] messages) {
-		if (messages == null) {
+		if (messages == null || messages.length == 0) {
 			return;
 		}
 		try {
@@ -59,20 +56,17 @@ public class BurpExtender implements IBurpExtender, IContextMenuFactory {
 
 	// open in editor
 	private void openAction(IHttpRequestResponse[] messages) {
-		if (messages == null) {
+		if (messages == null || messages.length == 0) {
 			return;
 		}
 		try {
 			String text = StringUtils.edit(messages);
-			File file = File.createTempFile(BurpExtender.name, ".txt");
+			File file = File.createTempFile(NAME, ".txt");
 			file.deleteOnExit();
-			try (FileOutputStream fs = new FileOutputStream(file, true)) {
-				fs.write(text.getBytes());
-				Desktop desktop = Desktop.getDesktop();
-				desktop.open(file);
-			} catch (Exception ex) {
-				ex.printStackTrace(stderr);
+			try (FileOutputStream fs = new FileOutputStream(file)) {
+				fs.write(text.getBytes(StandardCharsets.UTF_8));
 			}
+			Desktop.getDesktop().open(file);
 		} catch (Exception ex) {
 			ex.printStackTrace(stderr);
 		}
