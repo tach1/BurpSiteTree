@@ -34,11 +34,7 @@ public class StringUtils {
 	// TSV形式へ変換
 	private static String convertTsv(List<List<String>> rows) {
 		StringBuilder sb = new StringBuilder();
-<<<<<<< HEAD
 		for (List<String> row : rows) {
-=======
-		for (List<String> row : tsvList) {
->>>>>>> 3711c8b (refactor)
 			StringJoiner sj = new StringJoiner("\"\t\"", "\"", "\"");
 			for (String col : row) {
 				sj.add(escapeString(col));
@@ -78,7 +74,6 @@ public class StringUtils {
 
 	// リクエスト情報からURLを取得
 	private static String getUrl(IHttpRequestResponse message) {
-<<<<<<< HEAD
 		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
 		StringBuilder sb = new StringBuilder();
 		URL requestUrl = requestInfo.getUrl();
@@ -94,18 +89,6 @@ public class StringUtils {
 			sb.append("?" + requestUrl.getQuery());
 		}
 		return sb.toString();
-=======
-		URL requestUrl = BurpExtender.helpers.analyzeRequest(message).getUrl();
-		String url = requestUrl.getProtocol() + "://" + requestUrl.getHost();
-		if (requestUrl.getPort() != -1 && requestUrl.getPort() != requestUrl.getDefaultPort()) {
-			url += ":" + requestUrl.getPort();
-		}
-		url += requestUrl.getPath();
-		if (requestUrl.getQuery() != null) {
-			url += "?" + requestUrl.getQuery();
-		}
-		return url;
->>>>>>> 3711c8b (refactor)
 	}
 
 	// 診断対象かどうかを判定
@@ -195,17 +178,12 @@ public class StringUtils {
 
 	// JSON Bodyを解析してパラメータ数をカウント
 	private static int getParamCountJson(IHttpRequestResponse message) {
-<<<<<<< HEAD
-=======
-		List<List<String>> jsonParams = new ArrayList<>();
->>>>>>> 3711c8b (refactor)
 		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
 		if (requestInfo.getContentType() != IRequestInfo.CONTENT_TYPE_JSON) {
 			return 0;
 		}
 		String body = getBody(message);
 		try {
-<<<<<<< HEAD
 			return countJson(JsonParser.parseString(body));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
@@ -214,16 +192,6 @@ public class StringUtils {
 				if (!line.isBlank()) {
 					count += countJson(JsonParser.parseString(line));
 				}
-=======
-			jsonParams.addAll(parseJson(JsonParser.parseString(body), ""));
-		} catch (JsonSyntaxException e) {
-			// NDJSON対応
-			for (String line : body.split("\\R")) {
-				if (line.isBlank()) {
-					continue;
-				}
-				jsonParams.addAll(parseJson(JsonParser.parseString(line), ""));
->>>>>>> 3711c8b (refactor)
 			}
 			return count;
 		}
