@@ -19,23 +19,24 @@ public class StringUtils {
 	// リクエストの編集
 	public static String edit(IHttpRequestResponse[] messages) {
 		StringBuilder sb = new StringBuilder();
-		// 複数行選択時は逆順に処理する
+		// 複数選択時に画面上の表示順となるよう逆順で処理
 		for (int i = messages.length - 1; i >= 0; i--) {
 			if (messages[i].getRequest().length > 0) {
-				sb.append(convertTsv(createUrlRows(messages[i])));
-				sb.append(convertTsv(createParamRows(messages[i])));
-				sb.append(convertTsv(createJsonRows(messages[i])));
+				IHttpRequestResponse message = messages[i];
+				sb.append(convertTsv(createUrlRows(message)));
+				sb.append(convertTsv(createParamRows(message)));
+				sb.append(convertTsv(createJsonRows(message)));
 			}
 		}
 		return sb.toString();
 	}
 
 	// TSV形式へ変換
-	private static String convertTsv(List<List<String>> tsvList) {
+	private static String convertTsv(List<List<String>> rows) {
 		StringBuilder sb = new StringBuilder();
-		for (List<String> cols : tsvList) {
+		for (List<String> row : rows) {
 			StringJoiner sj = new StringJoiner("\"\t\"", "\"", "\"");
-			for (String col : cols) {
+			for (String col : row) {
 				sj.add(escapeString(col));
 			}
 			sb.append(sj.toString());
@@ -53,14 +54,17 @@ public class StringUtils {
 	// リクエスト情報からURL行を生成
 	private static List<List<String>> createUrlRows(IHttpRequestResponse message) {
 		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
-		URL urlInfo = requestInfo.getUrl();
-		String url = urlInfo.getProtocol() + "://" + urlInfo.getHost();
-		int port = urlInfo.getPort();
-		if (port != -1 && port != urlInfo.getDefaultPort()) {
-			url += ":" + port;
+		StringBuilder sb = new StringBuilder();
+		URL requestUrl = requestInfo.getUrl();
+		sb.append(requestUrl.getProtocol())
+				.append("://")
+				.append(requestUrl.getHost());
+		int port = requestUrl.getPort();
+		if (port != -1 && port != requestUrl.getDefaultPort()) {
+			sb.append(":" + port);
 		}
-		url += urlInfo.getPath();
-		return List.of(createUrlRow(requestInfo.getMethod(), url));
+		sb.append(requestUrl.getPath());
+		return List.of(createUrlRow(requestInfo.getMethod(), sb.toString()));
 	}
 
 	// TSV1行分の共通データを生成
@@ -108,9 +112,9 @@ public class StringUtils {
 		return value;
 	}
 
-	// URL・Cookie・Formパラメータを抽出
+	// URL・Cookie・Bodyパラメータを抽出
 	private static List<List<String>> createParamRows(IHttpRequestResponse message) {
-		List<List<String>> result = new ArrayList<>();
+		List<List<String>> paramRows = new ArrayList<>();
 		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
 		List<IParameter> parameters = requestInfo.getParameters();
 		for (IParameter parameter : parameters) {
@@ -132,9 +136,9 @@ public class StringUtils {
 				default:
 					continue;
 			}
-			result.add(createDataRow(type, parameter.getName(), decode(parameter.getValue())));
+			paramRows.add(createDataRow(type, parameter.getName(), decode(parameter.getValue())));
 		}
-		return result;
+		return paramRows;
 	}
 
 	// ISO-8859-1として解釈された文字列をUTF-8へ補正
@@ -165,65 +169,71 @@ public class StringUtils {
 
 	// JSON Bodyを解析して一覧化
 	private static List<List<String>> createJsonRows(IHttpRequestResponse message) {
-		List<List<String>> result = new ArrayList<>();
+		List<List<String>> jsonRows = new ArrayList<>();
 		IRequestInfo requestInfo = BurpExtender.helpers.analyzeRequest(message);
 		if (requestInfo.getContentType() != IRequestInfo.CONTENT_TYPE_JSON) {
 			return Collections.emptyList();
 		}
 		String body = getBody(message);
 		try {
-			result.addAll(parseJson(JsonParser.parseString(body), "", "JSON1"));
+			jsonRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
 			int i = 0;
-			for (String row : body.split("\\R")) {
-				if (row.isBlank()) {
+			for (String line : body.split("\\R")) {
+				if (line.isBlank()) {
 					continue;
 				}
-				result.addAll(parseJson(JsonParser.parseString(row), "", "JSON" + (++i)));
+				jsonRows.addAll(parseJson(JsonParser.parseString(line), "JSON" + (++i), ""));
 			}
 		}
-		return result;
+		return jsonRows;
 	}
 
 	// JSONを再帰的に走査してキーと値の一覧へ展開
-	private static List<List<String>> parseJson(JsonElement element, String parentKey, String type) {
-		List<List<String>> result = new ArrayList<>();
+	private static List<List<String>> parseJson(JsonElement element, String type, String parentKey) {
+		List<List<String>> entries = new ArrayList<>();
 		if (element.isJsonObject()) {
 			JsonObject obj = element.getAsJsonObject();
 			if (obj.isEmpty()) {
-				result.add(createDataRow(type, parentKey, ""));
-				return result;
+				String key = parentKey.isEmpty() ? "$" : parentKey;
+				return List.of(createDataRow(type, key, "{}"));
 			}
 			for (Map.Entry<String, JsonElement> entry : obj.entrySet()) {
 				String key = parentKey + "[" + entry.getKey() + "]";
-				JsonElement value = entry.getValue();
-				addJsonValue(result, value, key, type);
+				addJsonValue(entries, type, key, entry.getValue());
 			}
 
 		} else if (element.isJsonArray()) {
 			JsonArray array = element.getAsJsonArray();
 			if (array.isEmpty()) {
-				result.add(createDataRow(type, parentKey, ""));
-				return result;
+				String key = parentKey.isEmpty() ? "$" : parentKey;
+				return List.of(createDataRow(type, key, "[]"));
 			}
 			int index = 0;
 			for (JsonElement value : array) {
 				String key = parentKey + "[" + index++ + "]";
-				addJsonValue(result, value, key, type);
+				addJsonValue(entries, type, key, value);
 			}
+		} else if (element.isJsonNull()) {
+			String key = parentKey.isEmpty() ? "$" : parentKey;
+			entries.add(createDataRow(type, key, "null"));
+
+		} else {
+			String key = parentKey.isEmpty() ? "$" : parentKey;
+			entries.add(createDataRow(type, key, element.getAsString()));
 		}
-		return result;
+		return entries;
 	}
 
 	// オブジェクト・配列は再帰展開し、それ以外は値として追加
-	private static void addJsonValue(List<List<String>> result, JsonElement value, String key, String type) {
+	private static void addJsonValue(List<List<String>> entries, String type, String key, JsonElement value) {
 		if (value.isJsonObject() || value.isJsonArray()) {
-			result.addAll(parseJson(value, key, type));
+			entries.addAll(parseJson(value, type, key));
 		} else if (value.isJsonNull()) {
-			result.add(createDataRow(type, key, ""));
+			entries.add(createDataRow(type, key, "null"));
 		} else {
-			result.add(createDataRow(type, key, value.getAsString()));
+			entries.add(createDataRow(type, key, value.getAsString()));
 		}
 	}
 }
