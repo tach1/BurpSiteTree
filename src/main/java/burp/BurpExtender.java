@@ -19,7 +19,6 @@ import javax.swing.JMenuItem;
 
 public class BurpExtender implements BurpExtension {
 	private static final String NAME = "BurpSiteTree";
-
 	private MontoyaApi api;
 
 	@Override
