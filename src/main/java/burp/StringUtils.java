@@ -2,13 +2,11 @@ package burp;
 
 import burp.api.montoya.http.message.ContentType;
 import burp.api.montoya.http.message.HttpRequestResponse;
-
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
-
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -33,9 +31,9 @@ public class StringUtils {
 	}
 
 	// TSV形式へ変換
-	private static String convertTsv(List<List<String>> tsvRows) {
+	private static String convertTsv(List<List<String>> rows) {
 		StringBuilder sb = new StringBuilder();
-		for (List<String> row : tsvRows) {
+		for (List<String> row : rows) {
 			StringJoiner sj = new StringJoiner("\"\t\"", "\"", "\"");
 			for (String col : row) {
 				sj.add(escapeString(col));
@@ -48,8 +46,7 @@ public class StringUtils {
 
 	// 制御文字を空白、"を""に置換
 	private static String escapeString(String value) {
-		return value.replaceAll("[\\x00-\\x1F\\x7F]", "")
-				.replace("\"", "\"\"");
+		return value.replaceAll("[\\x00-\\x1F\\x7F]", "").replace("\"", "\"\"");
 	}
 
 	// リクエスト情報からURL行を生成
@@ -64,41 +61,26 @@ public class StringUtils {
 				sb.append(":").append(port);
 			}
 			sb.append(url.getPath());
-			return List.of(createUrlRow(request.method(), sb.toString()));
-
+			return List.of(createUrlRow(sb.toString(), request.method()));
 		} catch (MalformedURLException e) {
 			return Collections.emptyList();
 		}
 	}
 
 	// TSV1行分の共通データを生成
-	private static List<String> createRow(String method, String url, String type, String key, String value) {
-		return List.of(
-				url,
-				type,
-				key,
-				editValue(value),
-				method);
+	private static List<String> createRow(String url, String type, String key, String value,
+			String method) {
+		return List.of(url, type, key, editValue(value), method);
 	}
 
 	// URL情報用のTSV行を生成
-	private static List<String> createUrlRow(String method, String url) {
-		return createRow(
-				method,
-				url,
-				"",
-				"",
-				"");
+	private static List<String> createUrlRow(String url, String method) {
+		return createRow(url, "", "", "", method);
 	}
 
 	// パラメータ用のTSV行を生成
 	private static List<String> createDataRow(String type, String key, String value) {
-		return createRow(
-				"",
-				"",
-				type,
-				key,
-				value);
+		return createRow("", type, key, value, "");
 	}
 
 	// TSV出力用に値を整形
@@ -118,30 +100,30 @@ public class StringUtils {
 
 	// URL・Cookie・Bodyパラメータを抽出
 	private static List<List<String>> createParameterRows(HttpRequestResponse message) {
-		List<List<String>> tsvRows = new ArrayList<>();
+		List<List<String>> parameterRows = new ArrayList<>();
 		var parameters = message.request().parameters();
 		for (var parameter : parameters) {
 			String type;
 			switch (parameter.type()) {
-				case URL:
-					type = "URL";
-					break;
-				case COOKIE:
-					type = "Cookie";
-					break;
-				case BODY:
-				case MULTIPART_ATTRIBUTE:
-				case XML:
-				case XML_ATTRIBUTE:
-					type = "Body";
-					break;
-				case JSON:
-				default:
-					continue;
+			case URL:
+				type = "URL";
+				break;
+			case COOKIE:
+				type = "Cookie";
+				break;
+			case BODY:
+			case MULTIPART_ATTRIBUTE:
+			case XML:
+			case XML_ATTRIBUTE:
+				type = "Body";
+				break;
+			case JSON:
+			default:
+				continue;
 			}
-			tsvRows.add(createDataRow(type, parameter.name(), parameter.value()));
+			parameterRows.add(createDataRow(type, parameter.name(), parameter.value()));
 		}
-		return tsvRows;
+		return parameterRows;
 	}
 
 	// バイナリデータか判定
@@ -156,14 +138,14 @@ public class StringUtils {
 
 	// JSON Bodyを解析して一覧化
 	private static List<List<String>> createJsonRows(HttpRequestResponse message) {
-		List<List<String>> tsvRows = new ArrayList<>();
+		List<List<String>> jsonRows = new ArrayList<>();
 		var request = message.request();
 		if (request.contentType() != ContentType.JSON) {
 			return Collections.emptyList();
 		}
 		var body = request.bodyToString();
 		try {
-			tsvRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
+			jsonRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
 			int i = 0;
@@ -171,14 +153,15 @@ public class StringUtils {
 				if (line.isBlank()) {
 					continue;
 				}
-				tsvRows.addAll(parseJson(JsonParser.parseString(line), "JSON" + (++i), ""));
+				jsonRows.addAll(parseJson(JsonParser.parseString(line), "JSON" + (++i), ""));
 			}
 		}
-		return tsvRows;
+		return jsonRows;
 	}
 
 	// JSONを再帰的に走査してキーと値の一覧へ展開
-	private static List<List<String>> parseJson(JsonElement element, String type, String parentKey) {
+	private static List<List<String>> parseJson(JsonElement element, String type,
+			String parentKey) {
 		List<List<String>> entries = new ArrayList<>();
 		if (element.isJsonObject()) {
 			JsonObject obj = element.getAsJsonObject();
@@ -190,7 +173,6 @@ public class StringUtils {
 				String key = parentKey + "[" + entry.getKey() + "]";
 				addJsonValue(entries, type, key, entry.getValue());
 			}
-
 		} else if (element.isJsonArray()) {
 			JsonArray array = element.getAsJsonArray();
 			if (array.isEmpty()) {
@@ -205,7 +187,6 @@ public class StringUtils {
 		} else if (element.isJsonNull()) {
 			String key = parentKey.isEmpty() ? "$" : parentKey;
 			entries.add(createDataRow(type, key, "null"));
-
 		} else {
 			String key = parentKey.isEmpty() ? "$" : parentKey;
 			entries.add(createDataRow(type, key, element.getAsString()));
@@ -214,7 +195,8 @@ public class StringUtils {
 	}
 
 	// オブジェクト・配列は再帰展開し、それ以外は値として追加
-	private static void addJsonValue(List<List<String>> entries, String type, String key, JsonElement value) {
+	private static void addJsonValue(List<List<String>> entries, String type, String key,
+			JsonElement value) {
 		if (value.isJsonObject() || value.isJsonArray()) {
 			entries.addAll(parseJson(value, type, key));
 		} else if (value.isJsonNull()) {
