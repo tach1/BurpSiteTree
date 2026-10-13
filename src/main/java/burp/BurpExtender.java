@@ -1,6 +1,8 @@
 package burp;
 
 import burp.api.montoya.MontoyaApi;
+import burp.api.montoya.core.Registration;
+import burp.api.montoya.core.ToolType;
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.ui.contextmenu.ContextMenuEvent;
 import burp.api.montoya.http.message.HttpRequestResponse;
@@ -31,6 +33,8 @@ public class BurpExtender implements BurpExtension {
 	private static final String NAME = "BurpSiteTree";
 	private static final String PREF_ENABLE_HOTKEY = "enableHotkey";
 	private MontoyaApi api;
+	private Registration copyHotkeyRegistration;
+	private Registration openHotkeyRegistration;
 
 	@Override
 	public void initialize(MontoyaApi api) {
@@ -42,29 +46,17 @@ public class BurpExtender implements BurpExtension {
 			public List<Component> provideMenuItems(ContextMenuEvent event) {
 				JMenuItem copyMenu = new JMenuItem("Copy to clipboard");
 				JMenuItem openMenu = new JMenuItem("Open in Editor");
-				copyMenu.addActionListener(e -> copyAction(event.selectedRequestResponses()));
-				openMenu.addActionListener(e -> openAction(event.selectedRequestResponses()));
-				if (getBooleanPreference(PREF_ENABLE_HOTKEY, true)) {
+				copyMenu.addActionListener(e -> copyAction(getRequestResponses(event)));
+				openMenu.addActionListener(e -> openAction(getRequestResponses(event)));
+				// Proxy HTTP Historyのみホットキーを表示する
+				if (getBooleanPreference(PREF_ENABLE_HOTKEY, true)
+						&& event.toolType() == ToolType.PROXY) {
 					copyMenu.setAccelerator(KeyStroke.getKeyStroke("ctrl shift C"));
 					openMenu.setAccelerator(KeyStroke.getKeyStroke("ctrl shift E"));
 				}
 				return List.of(copyMenu, openMenu);
 			}
 		});
-		api.userInterface().registerHotKeyHandler(HotKeyContext.PROXY_HTTP_HISTORY,
-				HotKey.hotKey("Copy to clipboard", "Ctrl+Shift+C"), event -> {
-					if (!getBooleanPreference(PREF_ENABLE_HOTKEY, true)) {
-						return;
-					}
-					copyAction(event.selectedRequestResponses());
-				});
-		api.userInterface().registerHotKeyHandler(HotKeyContext.PROXY_HTTP_HISTORY,
-				HotKey.hotKey("Open in Editor", "Ctrl+Shift+E"), event -> {
-					if (!getBooleanPreference(PREF_ENABLE_HOTKEY, true)) {
-						return;
-					}
-					openAction(event.selectedRequestResponses());
-				});
 		api.userInterface().registerSettingsPanel(new SettingsPanel() {
 			private final JPanel panel = createSettingsPanel();
 
@@ -73,6 +65,7 @@ public class BurpExtender implements BurpExtension {
 				return panel;
 			}
 		});
+		updateHotkeys(getBooleanPreference(PREF_ENABLE_HOTKEY, true));
 	}
 
 	private JPanel createSettingsPanel() {
@@ -86,14 +79,39 @@ public class BurpExtender implements BurpExtension {
 		title.setAlignmentX(Component.LEFT_ALIGNMENT);
 		description.setAlignmentX(Component.LEFT_ALIGNMENT);
 		enableHotkey.setAlignmentX(Component.LEFT_ALIGNMENT);
-		enableHotkey.addActionListener(
-				e -> setBooleanPreference(PREF_ENABLE_HOTKEY, enableHotkey.isSelected()));
+		enableHotkey.addActionListener(e -> {
+			boolean enabled = enableHotkey.isSelected();
+			setBooleanPreference(PREF_ENABLE_HOTKEY, enabled);
+			updateHotkeys(enabled);
+		});
 		panel.add(title);
 		panel.add(Box.createVerticalStrut(8));
 		panel.add(description);
 		panel.add(Box.createVerticalStrut(16));
 		panel.add(enableHotkey);
 		return panel;
+	}
+
+	// ホットキーは Proxy HTTP History のみ対応
+	private void updateHotkeys(boolean enabled) {
+		if (copyHotkeyRegistration != null) {
+			copyHotkeyRegistration.deregister();
+			copyHotkeyRegistration = null;
+		}
+		if (openHotkeyRegistration != null) {
+			openHotkeyRegistration.deregister();
+			openHotkeyRegistration = null;
+		}
+		if (enabled) {
+			copyHotkeyRegistration = api.userInterface().registerHotKeyHandler(
+					HotKeyContext.PROXY_HTTP_HISTORY,
+					HotKey.hotKey("Copy to clipboard", "Ctrl+Shift+C"),
+					event -> copyAction(event.selectedRequestResponses()));
+			openHotkeyRegistration = api.userInterface().registerHotKeyHandler(
+					HotKeyContext.PROXY_HTTP_HISTORY,
+					HotKey.hotKey("Open in Editor", "Ctrl+Shift+E"),
+					event -> openAction(event.selectedRequestResponses()));
+		}
 	}
 
 	private boolean getBooleanPreference(String key, boolean defaultValue) {
@@ -103,6 +121,19 @@ public class BurpExtender implements BurpExtension {
 
 	private void setBooleanPreference(String key, boolean value) {
 		api.persistence().preferences().setString(NAME + "." + key, Boolean.toString(value));
+	}
+
+	// Proxy HTTP History と Repeater の双方に対応
+	private List<HttpRequestResponse> getRequestResponses(ContextMenuEvent event) {
+		List<HttpRequestResponse> messages = event.selectedRequestResponses();
+		if (!messages.isEmpty()) {
+			return messages;
+		}
+		var editorMessage = event.messageEditorRequestResponse();
+		if (editorMessage.isPresent()) {
+			return List.of(editorMessage.get().requestResponse());
+		}
+		return List.of();
 	}
 
 	// 選択したリクエスト情報をクリップボードへコピー
@@ -116,8 +147,8 @@ public class BurpExtender implements BurpExtension {
 			Clipboard clipboard = toolkit.getSystemClipboard();
 			StringSelection selection = new StringSelection(text);
 			clipboard.setContents(selection, selection);
-		} catch (Exception ex) {
-			api.logging().logToError(ex.toString());
+		} catch (Exception e) {
+			api.logging().logToError(e.toString());
 		}
 	}
 
@@ -134,8 +165,8 @@ public class BurpExtender implements BurpExtension {
 				fs.write(text.getBytes(StandardCharsets.UTF_8));
 			}
 			Desktop.getDesktop().open(file);
-		} catch (Exception ex) {
-			api.logging().logToError(ex.toString());
+		} catch (Exception e) {
+			api.logging().logToError(e.toString());
 		}
 	}
 }
