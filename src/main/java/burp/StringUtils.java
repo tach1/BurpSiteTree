@@ -61,7 +61,8 @@ public class StringUtils {
 				sb.append(":").append(port);
 			}
 			sb.append(url.getPath());
-			return List.of(createUrlRow(sb.toString(), request.method()));
+			return List.of(createUrlRow(sb.toString(), request.method(), request.query(),
+					request.bodyToString()));
 		} catch (MalformedURLException e) {
 			return Collections.emptyList();
 		}
@@ -69,18 +70,19 @@ public class StringUtils {
 
 	// TSV1行分の共通データを生成
 	private static List<String> createRow(String url, String type, String key, String value,
-			String method) {
-		return List.of(url, type, key, editValue(value), method);
+			String method, String query, String body) {
+		return List.of(url, type, key, editValue(value), method, "", "", "", "", "", "", "", "", "",
+				"", "", "", query, body);
 	}
 
 	// URL情報用のTSV行を生成
-	private static List<String> createUrlRow(String url, String method) {
-		return createRow(url, "", "", "", method);
+	private static List<String> createUrlRow(String url, String method, String query, String body) {
+		return createRow(url, "", "", "", method, query, body);
 	}
 
 	// パラメータ用のTSV行を生成
 	private static List<String> createDataRow(String type, String key, String value) {
-		return createRow("", type, key, value, "");
+		return createRow("", type, key, value, "", "", "");
 	}
 
 	// TSV出力用に値を整形
