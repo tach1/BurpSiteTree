@@ -20,7 +20,7 @@ public class StringUtils {
 	private static final String FORMULA = "=IF(ISERROR(SEARCH(\"重複\",INDIRECT(\"M\"&ROW()))), INDIRECT(\"Q\"&ROW()), "
 			+ "INDIRECT(\"Q\"&ROW())&\"、No.\"&INDIRECT(\"P\"&ROW())&\" と同等の動きと思われる。\")";
 	// Excelセルに格納可能な最大文字数
-	private static final int EXCEL_CELL_MAX_LENGTH = 32767;
+	private static final int EXCEL_CELL_MAX_LENGTH = 30000;
 
 	// リクエストの編集
 	public static String edit(List<HttpRequestResponse> messages) {

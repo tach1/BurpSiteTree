@@ -30,7 +30,7 @@ import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 
 public class BurpExtender implements BurpExtension {
-	private static final String NAME = "BurpSiteTree";
+	private static final String NAME = "BurpSiteTree Type-S";
 	private static final String PREF_ENABLE_HOTKEY = "enableHotkey";
 	private MontoyaApi api;
 	private Registration copyHotkeyRegistration;
