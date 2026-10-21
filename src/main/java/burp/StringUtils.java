@@ -9,6 +9,8 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
@@ -17,6 +19,8 @@ public class StringUtils {
 	// Excelの列に設定する式
 	private static final String FORMULA = "=IF(ISERROR(SEARCH(\"重複\",INDIRECT(\"M\"&ROW()))), INDIRECT(\"Q\"&ROW()), "
 			+ "INDIRECT(\"Q\"&ROW())&\"、No.\"&INDIRECT(\"P\"&ROW())&\" と同等の動きと思われる。\")";
+	// Excelセルに格納可能な最大文字数
+	private static final int EXCEL_CELL_MAX_LENGTH = 32767;
 
 	// リクエストの編集
 	public static String edit(List<HttpRequestResponse> messages) {
@@ -51,13 +55,23 @@ public class StringUtils {
 	// リクエスト情報から出力行を生成
 	private static List<List<String>> createRows(HttpRequestResponse message) {
 		return List.of(createRow(getUrl(message), isTarget(message), getRemark(message),
-				message.request().bodyToString()));
+				getRequestBodyForExcel(message)));
 	}
 
 	// TSV1行分の共通データを生成
 	private static List<String> createRow(String url, boolean isTarget, String remark,
-			String body) {
-		return List.of(url, isTarget ? "対象" : "対象外", "", "", "", remark, FORMULA, "", body);
+			List<String> body) {
+		List<String> row = new ArrayList<>();
+		row.add(url);
+		row.add(isTarget ? "対象" : "対象外");
+		row.add("");
+		row.add("");
+		row.add("");
+		row.add(remark);
+		row.add(FORMULA);
+		row.add("");
+		row.addAll(body);
+		return row;
 	}
 
 	// リクエスト情報からURLを生成
@@ -119,6 +133,19 @@ public class StringUtils {
 		// ステータスコード
 		sb.append("、status:").append(statusCode);
 		return sb.toString();
+	}
+
+	// リクエストBodyをExcelセル上限ごとに分割
+	private static List<String> getRequestBodyForExcel(HttpRequestResponse message) {
+		String text = message.request().bodyToString();
+		if (text == null || text.isEmpty()) {
+			return Collections.emptyList();
+		}
+		List<String> body = new ArrayList<>();
+		for (int i = 0; i < text.length(); i += EXCEL_CELL_MAX_LENGTH) {
+			body.add(text.substring(i, Math.min(i + EXCEL_CELL_MAX_LENGTH, text.length())));
+		}
+		return body;
 	}
 
 	// レスポンス情報からStatusCodeを取得
