@@ -9,6 +9,7 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -137,8 +138,9 @@ public class StringUtils {
 
 	// リクエストBodyをExcelセル上限ごとに分割
 	private static List<String> getRequestBodyForExcel(HttpRequestResponse message) {
-		String text = message.request().bodyToString();
-		if (text == null || text.isEmpty()) {
+		// bodyToString() だと一部リクエストで文字化けするため、UTF-8固定で変換する
+		String text = new String(message.request().body().getBytes(), StandardCharsets.UTF_8);
+		if (text.isEmpty()) {
 			return Collections.emptyList();
 		}
 		List<String> body = new ArrayList<>();
@@ -188,13 +190,13 @@ public class StringUtils {
 		if (request.contentType() != ContentType.JSON) {
 			return 0;
 		}
-		String body = request.bodyToString();
+		String text = new String(request.body().getBytes(), StandardCharsets.UTF_8);
 		try {
-			return countJson(JsonParser.parseString(body));
+			return countJson(JsonParser.parseString(text));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
 			int count = 0;
-			for (String line : body.split("\\R")) {
+			for (String line : text.split("\\R")) {
 				if (!line.isBlank()) {
 					count += countJson(JsonParser.parseString(line));
 				}
