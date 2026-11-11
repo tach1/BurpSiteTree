@@ -143,13 +143,14 @@ public class StringUtils {
 		if (request.contentType() != ContentType.JSON) {
 			return Collections.emptyList();
 		}
-		var body = request.bodyToString();
+		// bodyToString() だと一部リクエストで文字化けするため、UTF-8固定で変換する
+		String text = new String(request.body().getBytes(), StandardCharsets.UTF_8);
 		try {
-			jsonRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
+			jsonRows.addAll(parseJson(JsonParser.parseString(text), "JSON1", ""));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
 			int i = 0;
-			for (String line : body.split("\\R")) {
+			for (String line : text.split("\\R")) {
 				if (line.isBlank()) {
 					continue;
 				}
