@@ -17,6 +17,9 @@ import java.util.Map;
 import java.util.StringJoiner;
 
 public class StringUtils {
+	// Excelセルに格納可能な最大文字数
+	private static final int EXCEL_CELL_MAX_LENGTH = 30000;
+
 	// リクエストの編集
 	public static String edit(List<HttpRequestResponse> messages) {
 		StringBuilder sb = new StringBuilder();
@@ -62,27 +65,50 @@ public class StringUtils {
 			}
 			sb.append(url.getPath());
 			return List.of(createUrlRow(sb.toString(), request.method(), request.query(),
-					request.bodyToString()));
+					getRequestBodyForExcel(message)));
 		} catch (MalformedURLException e) {
 			return Collections.emptyList();
 		}
 	}
 
-	// TSV1行分の共通データを生成
-	private static List<String> createRow(String url, String type, String key, String value,
-			String method, String query, String body) {
-		return List.of(url, type, key, editValue(value), method, "", "", "", "", "", "", "", "", "",
-				"", "", "", query, body);
+	// リクエストBodyをExcelセル上限ごとに分割
+	private static List<String> getRequestBodyForExcel(HttpRequestResponse message) {
+		// bodyToString() だと一部リクエストで文字化けするため、UTF-8固定で変換する
+		String text = new String(message.request().body().getBytes(), StandardCharsets.UTF_8);
+		if (text.isEmpty()) {
+			return Collections.emptyList();
+		}
+		List<String> body = new ArrayList<>();
+		for (int i = 0; i < text.length(); i += EXCEL_CELL_MAX_LENGTH) {
+			body.add(text.substring(i, Math.min(i + EXCEL_CELL_MAX_LENGTH, text.length())));
+		}
+		return body;
 	}
 
 	// URL情報用のTSV行を生成
-	private static List<String> createUrlRow(String url, String method, String query, String body) {
+	private static List<String> createUrlRow(String url, String method, String query,
+			List<String> body) {
 		return createRow(url, "", "", "", method, query, body);
 	}
 
 	// パラメータ用のTSV行を生成
 	private static List<String> createDataRow(String type, String key, String value) {
-		return createRow("", type, key, value, "", "", "");
+		return createRow("", type, key, value, "", "", Collections.emptyList());
+	}
+
+	// TSV1行分の共通データを生成
+	private static List<String> createRow(String url, String type, String key, String value,
+			String method, String query, List<String> body) {
+		List<String> row = new ArrayList<>();
+		row.add(url);
+		row.add(type);
+		row.add(key);
+		row.add(editValue(value));
+		row.add(method);
+		row.addAll(Collections.nCopies(12, ""));
+		row.add(query);
+		row.addAll(body);
+		return row;
 	}
 
 	// TSV出力用に値を整形
@@ -145,13 +171,13 @@ public class StringUtils {
 		if (request.contentType() != ContentType.JSON) {
 			return Collections.emptyList();
 		}
-		var body = request.bodyToString();
+		String text = new String(request.body().getBytes(), StandardCharsets.UTF_8);
 		try {
-			jsonRows.addAll(parseJson(JsonParser.parseString(body), "JSON1", ""));
+			jsonRows.addAll(parseJson(JsonParser.parseString(text), "JSON1", ""));
 		} catch (JsonSyntaxException e) {
 			// NDJSON対応
 			int i = 0;
-			for (String line : body.split("\\R")) {
+			for (String line : text.split("\\R")) {
 				if (line.isBlank()) {
 					continue;
 				}
